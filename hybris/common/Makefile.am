@@ -55,6 +55,11 @@ endif
 libhybris_common_la_LIBADD = \
 	hooks/libhybris-hooks.la
 
+if WANT_ARCH_ARM64
+libhybris_common_la_SOURCES += \
+	tls_patcher.c
+endif
+
 libhybris_common_la_CPPFLAGS = \
 	-I$(top_srcdir)/include \
 	$(ANDROID_HEADERS_CFLAGS) \
