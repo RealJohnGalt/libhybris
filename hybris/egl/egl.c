@@ -76,6 +76,8 @@ static EGLBoolean  (*_eglSwapBuffers)(EGLDisplay dpy, EGLSurface surface) = NULL
 static EGLImageKHR (*_eglCreateImageKHR)(EGLDisplay dpy, EGLContext ctx, EGLenum target, EGLClientBuffer buffer, const EGLint *attrib_list) = NULL;
 static EGLBoolean (*_eglDestroyImageKHR) (EGLDisplay dpy, EGLImageKHR image) = NULL;
 
+static EGLBoolean (*_eglGetConfigAttrib)(EGLDisplay dpy, EGLConfig config, EGLint attribute, EGLint *value) = NULL;
+
 static void (*_glEGLImageTargetTexture2DOES) (GLenum target, GLeglImageOES image) = NULL;
 
 static __eglMustCastToProperFunctionPointerType (*_eglGetProcAddress)(const char *procname) = NULL;
@@ -243,6 +245,9 @@ EGLDisplay __eglHybrisGetPlatformDisplayCommon(EGLenum platform,
 			}
 			break;
 #endif
+		case EGL_PLATFORM_GBM_KHR:
+			hybris_ws = "lindroid-drm";
+			break;
 
 		default:
 			__eglHybrisSetError(EGL_BAD_PARAMETER);
@@ -319,7 +324,6 @@ const char * eglQueryString(EGLDisplay dpy, EGLint name)
 
 HYBRIS_IMPLEMENT_FUNCTION4(egl, EGLBoolean, eglGetConfigs, EGLDisplay, EGLConfig *, EGLint, EGLint *);
 HYBRIS_IMPLEMENT_FUNCTION5(egl, EGLBoolean, eglChooseConfig, EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *);
-HYBRIS_IMPLEMENT_FUNCTION4(egl, EGLBoolean, eglGetConfigAttrib, EGLDisplay, EGLConfig, EGLint, EGLint *);
 
 EGLSurface eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config,
 		EGLNativeWindowType win,
@@ -473,6 +477,16 @@ EGLBoolean eglSwapBuffers(EGLDisplay dpy, EGLSurface surface)
 	return ret;
 }
 
+EGLBoolean eglGetConfigAttrib(EGLDisplay dpy, EGLConfig config, EGLint attribute, EGLint *value) {
+	EGLBoolean ret;
+	HYBRIS_TRACE_BEGIN("hybris-egl", "eglGetConfigAttrib", "");
+	HYBRIS_DLSYSM(egl, &_eglGetConfigAttrib, "eglGetConfigAttrib");
+	ret = (*_eglGetConfigAttrib)(dpy, config, attribute, value);
+	ws_getConfigAttrib(&dpy, &config, &attribute, value);
+	HYBRIS_TRACE_END("hybris-egl", "eglGetConfigAttrib", "");
+	return ret;
+}
+
 HYBRIS_IMPLEMENT_FUNCTION3(egl, EGLBoolean, eglCopyBuffers, EGLDisplay, EGLSurface, EGLNativePixmapType);
 
 
@@ -551,6 +565,7 @@ static struct FuncNamePair _eglHybrisOverrideFunctions[] = {
 	OVERRIDE_SAMENAME(eglCreateContext),
 	OVERRIDE_SAMENAME(eglSwapBuffers),
 	OVERRIDE_SAMENAME(eglGetProcAddress),
+	OVERRIDE_SAMENAME(eglGetConfigAttrib),
 	/*
 	 * EGL_EXT_platform_base, in case Android EGL or glvnd advertise its
 	 * support.
