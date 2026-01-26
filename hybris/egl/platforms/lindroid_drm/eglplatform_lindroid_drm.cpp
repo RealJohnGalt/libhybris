@@ -179,6 +179,17 @@ static uint32_t get_gbm_pixel_format(int hal_format)
     return format;
 }
 
+static inline uint32_t fourcc_code(char a, char b, char c, char d)
+{
+	return ((uint32_t)a) | ((uint32_t)b << 8) | ((uint32_t)c << 16) | ((uint32_t)d << 24);
+}
+
+static inline int drm_cpp(uint32_t f)
+{
+	return (f == fourcc_code('R','G','1','6') || f == fourcc_code('B','G','1','6')) ? 2 :
+		   (f == fourcc_code('R','G','2','4') || f == fourcc_code('B','G','2','4')) ? 3 : 4;
+}
+
 extern "C" EGLBoolean egl_get_win_buf(EGLint width, EGLint height, EGLint usage, EGLint format, EGLint stride,
                                                                     native_handle_t *native, EGLClientBuffer *buffer)
 {
@@ -294,6 +305,8 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
 {
 	int buff_fd, native_handle_id;
 	int width = 0, height = 0, format = 0, stride = 0;
+	int p[2];
+	ssize_t n;
 	native_handle_t* full_handle;
 
 	// Parse Image parameters
@@ -355,13 +368,17 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
 		abort();
 	}
 
-	if (read(buff_fd, &native_handle_id, sizeof(int)) != sizeof(int)) {
+	n = read(buff_fd, p, sizeof(p));
+	if (n < (ssize_t)sizeof(int)) {
 		fprintf(stderr, "Fatal: failed to read fd: %d", buff_fd);
 		abort();
 	}
 
-	// Our libgbm *4's the stride to match drm expectations
-	stride = stride / 4;
+	native_handle_id = p[0];
+	if (n == (ssize_t)sizeof(p))
+		stride = p[1];
+	else if (stride >= width * drm_cpp(format))
+		stride = stride / drm_cpp(format);
 
 	// Attempt to get buffer from create-disp
 	if(evdi_get_native_handle_t(native_handle_id, &full_handle, true)) {
