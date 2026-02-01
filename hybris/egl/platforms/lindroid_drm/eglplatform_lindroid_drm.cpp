@@ -418,11 +418,13 @@ extern "C" void lindroid_drmws_finishSwap(EGLDisplay dpy, EGLNativeWindowType wi
 {
         _init_egl_funcs(dpy);
         WaylandNativeWindow *window = static_cast<WaylandNativeWindow *>((struct ANativeWindow *)win);
+/*
         if (_eglCreateSyncKHR) {
                 EGLSyncKHR sync = (*_eglCreateSyncKHR)(dpy, EGL_SYNC_FENCE_KHR, NULL);
                 (*_eglClientWaitSyncKHR)(dpy, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, EGL_FOREVER_KHR);
                 (*_eglDestroySyncKHR)(dpy, sync);
         }
+*/
         window->finishSwap();
 }
 
