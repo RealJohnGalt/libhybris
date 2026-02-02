@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <mutex>
+#include <atomic>
 #include <algorithm>
 #include <gbm.h>
 #include <wayland-client.h>
@@ -69,6 +70,7 @@ static __eglMustCastToProperFunctionPointerType (*_eglGetProcAddress)(const char
 static EGLSyncKHR (*_eglCreateSyncKHR)(EGLDisplay dpy, EGLenum type, const EGLint *attrib_list) = NULL;
 static EGLBoolean (*_eglDestroySyncKHR)(EGLDisplay dpy, EGLSyncKHR sync) = NULL;
 static EGLint (*_eglClientWaitSyncKHR)(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout) = NULL;
+static EGLint (*_eglDupNativeFenceFDANDROID)(EGLDisplay dpy, EGLSyncKHR sync) = NULL;
 
 //static std::vector<HWComposerNativeWindow *> _nativewindows;
 static std::mutex _nativewindows_mutex;
@@ -123,6 +125,7 @@ int evdi_get_native_handle_t(int native_handle_id, native_handle_t **handle, boo
 
 	ret = ioctl(drm_fd, DRM_IOCTL_EVDI_GBM_GET_BUFF, &cmd);
 	if (ret < 0) {
+		free(cmd.native_handle);
 		fprintf(stderr, "DRM_IOCTL_EVDI_GBM_GET_BUFF failed, do fd come from non lindroid driver?");
 		return ret;
 	}
@@ -193,6 +196,64 @@ extern "C" EGLBoolean egl_get_win_buf(EGLint width, EGLint height, EGLint usage,
 	return EGL_TRUE;
 }
 
+static thread_local int tls_last_native_handle_id = -1;
+
+#ifndef DRM_EVDI_SET_ACQUIRE_FENCE
+#define DRM_EVDI_SET_ACQUIRE_FENCE 0x0E
+struct drm_evdi_set_acquire_fence {
+        int id;
+        uint32_t display_id;
+        int acquire_fence_fd;
+};
+#define DRM_IOCTL_EVDI_SET_ACQUIRE_FENCE DRM_IOWR(DRM_COMMAND_BASE +  \
+        DRM_EVDI_SET_ACQUIRE_FENCE, struct drm_evdi_set_acquire_fence)
+#endif
+
+static int evdi_submit_acquire_fence_for_id(int display_id, int native_handle_id, int fence_fd)
+{
+	struct drm_evdi_set_acquire_fence cmd;
+
+	if (drm_fd < 0 || native_handle_id <= 0) {
+		if (fence_fd >= 0)
+			close(fence_fd);
+		return 0;
+	}
+
+	cmd.id = native_handle_id;
+	cmd.display_id = (uint32_t)display_id;
+	cmd.acquire_fence_fd = fence_fd;
+	(void)ioctl(drm_fd, DRM_IOCTL_EVDI_SET_ACQUIRE_FENCE, &cmd);
+	if (fence_fd >= 0)
+		close(fence_fd);
+
+	return 0;
+}
+
+static int egl_create_native_fence_fd(EGLDisplay dpy)
+{
+        EGLSyncKHR sync;
+        int fd;
+
+        if (!_eglCreateSyncKHR || !_eglDestroySyncKHR || !_eglClientWaitSyncKHR || !_eglDupNativeFenceFDANDROID)
+                return -1;
+
+        static const EGLint attribs[] = {
+                EGL_SYNC_NATIVE_FENCE_FD_ANDROID, EGL_NO_NATIVE_FENCE_FD_ANDROID,
+                EGL_NONE
+        };
+
+        sync = (*_eglCreateSyncKHR)(dpy, EGL_SYNC_NATIVE_FENCE_ANDROID, attribs);
+        if (sync == EGL_NO_SYNC_KHR)
+                return -1;
+
+        /* Flush commands so the fence will be tied to submitted work. */
+        (void)(*_eglClientWaitSyncKHR)(dpy, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 0);
+
+        fd = (*_eglDupNativeFenceFDANDROID)(dpy, sync);
+        (void)(*_eglDestroySyncKHR)(dpy, sync);
+        return fd;
+}
+
 extern "C" void lindroid_drmws_init_module(struct ws_egl_interface *egl_iface)
 {
 	// TBD: Is that the best way?
@@ -226,6 +287,11 @@ static void _init_egl_funcs(EGLDisplay display)
 		_eglClientWaitSyncKHR = (PFNEGLCLIENTWAITSYNCKHRPROC)
 				(*_eglGetProcAddress)("eglClientWaitSyncKHR");
 		assert(_eglClientWaitSyncKHR);
+	}
+	if (strstr(extensions, "EGL_ANDROID_native_fence_sync")) {
+		_eglDupNativeFenceFDANDROID = (PFNEGLDUPNATIVEFENCEFDANDROIDPROC)
+			(*_eglGetProcAddress)("eglDupNativeFenceFDANDROID");
+		assert(_eglDupNativeFenceFDANDROID);
 	}
 }
 
@@ -293,7 +359,7 @@ extern "C" __eglMustCastToProperFunctionPointerType lindroid_drmws_eglGetProcAdd
 
 extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *target, EGLClientBuffer *buffer, const EGLint **attrib_list)
 {
-	int buff_fd, native_handle_id;
+	int buff_fd = -1, native_handle_id;
 	int width = 0, height = 0, format = 0, stride = 0;
 	native_handle_t* full_handle;
 
@@ -321,7 +387,7 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
 	}
 
 	// As per https://registry.khronos.org/EGL/extensions/EXT/EGL_EXT_image_dma_buf_import.txt those valuies are mandatory
-	if(!buff_fd) {
+	if(buff_fd < 0) {
 		fprintf(stderr, "Fatal: EGL_DMA_BUF_PLANE0_FD_EXT is missing from EGL_LINUX_DMA_BUF_EXT");
 		abort();
 	}
@@ -360,6 +426,8 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
 		fprintf(stderr, "Fatal: failed to read fd: %d", buff_fd);
 		abort();
 	}
+
+	tls_last_native_handle_id = native_handle_id;
 
 	// Our libgbm *4's the stride to match drm expectations
 	stride = stride / 4;
@@ -418,11 +486,11 @@ extern "C" void lindroid_drmws_finishSwap(EGLDisplay dpy, EGLNativeWindowType wi
 {
         _init_egl_funcs(dpy);
         WaylandNativeWindow *window = static_cast<WaylandNativeWindow *>((struct ANativeWindow *)win);
-        if (_eglCreateSyncKHR) {
-                EGLSyncKHR sync = (*_eglCreateSyncKHR)(dpy, EGL_SYNC_FENCE_KHR, NULL);
-                (*_eglClientWaitSyncKHR)(dpy, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, EGL_FOREVER_KHR);
-                (*_eglDestroySyncKHR)(dpy, sync);
-        }
+        int id = tls_last_native_handle_id;
+        tls_last_native_handle_id = -1;
+
+        int fence_fd = egl_create_native_fence_fd(dpy);
+        (void)evdi_submit_acquire_fence_for_id(0 /* display_id */, id, fence_fd);
         window->finishSwap();
 }
 
