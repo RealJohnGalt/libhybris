@@ -28,6 +28,7 @@
 #include <assert.h>
 #include <mutex>
 #include <atomic>
+#include <deque>
 #include <algorithm>
 #include <gbm.h>
 #include <wayland-client.h>
@@ -71,11 +72,37 @@ static EGLSyncKHR (*_eglCreateSyncKHR)(EGLDisplay dpy, EGLenum type, const EGLin
 static EGLBoolean (*_eglDestroySyncKHR)(EGLDisplay dpy, EGLSyncKHR sync) = NULL;
 static EGLint (*_eglClientWaitSyncKHR)(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout) = NULL;
 static EGLint (*_eglDupNativeFenceFDANDROID)(EGLDisplay dpy, EGLSyncKHR sync) = NULL;
+static EGLint (*_eglGetError)(void) = NULL;
 
 //static std::vector<HWComposerNativeWindow *> _nativewindows;
 static std::mutex _nativewindows_mutex;
 int drm_fd;
 struct gbm_device *gbm_dev;
+
+static std::mutex g_bufid_mutex;
+static std::deque<int> g_bufid_queue;
+static std::atomic<int> g_last_bufid{-1};
+
+static inline void push_bufid(int id)
+{
+    if (id <= 0)
+        return;
+    g_last_bufid.store(id, std::memory_order_release);
+    std::lock_guard<std::mutex> lk(g_bufid_mutex);
+    g_bufid_queue.push_back(id);
+    while (g_bufid_queue.size() > 16)
+        g_bufid_queue.pop_front();
+}
+
+static inline int pop_bufid_nonblocking()
+{
+    std::lock_guard<std::mutex> lk(g_bufid_mutex);
+    if (g_bufid_queue.empty())
+        return -1;
+    int id = g_bufid_queue.front();
+    g_bufid_queue.pop_front();
+    return id;
+}
 
 static int drm_auth_magic(int fd, drm_magic_t magic) {
     drm_auth_t auth;
@@ -222,7 +249,12 @@ static int evdi_submit_acquire_fence_for_id(int display_id, int native_handle_id
 	cmd.id = native_handle_id;
 	cmd.display_id = (uint32_t)display_id;
 	cmd.acquire_fence_fd = fence_fd;
-	(void)ioctl(drm_fd, DRM_IOCTL_EVDI_SET_ACQUIRE_FENCE, &cmd);
+	int ret = ioctl(drm_fd, DRM_IOCTL_EVDI_SET_ACQUIRE_FENCE, &cmd);
+	if (ret < 0) {
+		fprintf(stderr,
+		        "DRM_IOCTL_EVDI_SET_ACQUIRE_FENCE failed: id=%d display_id=%d fence_fd=%d errno=%d (%s)\n",
+		        native_handle_id, display_id, fence_fd, errno, strerror(errno));
+	}
 	if (fence_fd >= 0)
 		close(fence_fd);
 
@@ -243,8 +275,15 @@ static int egl_create_native_fence_fd(EGLDisplay dpy)
         };
 
         sync = (*_eglCreateSyncKHR)(dpy, EGL_SYNC_NATIVE_FENCE_ANDROID, attribs);
-        if (sync == EGL_NO_SYNC_KHR)
+        if (sync == EGL_NO_SYNC_KHR) {
+                if (_eglGetError) {
+                        EGLint e = (*_eglGetError)();
+                        fprintf(stderr, "eglCreateSyncKHR(EGL_SYNC_NATIVE_FENCE_ANDROID) failed, eglError=0x%x\n", e);
+                } else {
+                        fprintf(stderr, "eglCreateSyncKHR(EGL_SYNC_NATIVE_FENCE_ANDROID) failed\n");
+                }
                 return -1;
+        }
 
         /* Flush commands so the fence will be tied to submitted work. */
         (void)(*_eglClientWaitSyncKHR)(dpy, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 0);
@@ -275,6 +314,8 @@ static void _init_egl_funcs(EGLDisplay display)
 			hybris_android_egl_dlsym("eglGetProcAddress");
 	assert(_eglGetProcAddress);
 
+	_eglGetError = (EGLint (*)(void))hybris_android_egl_dlsym("eglGetError");
+
 	const char *extensions = (*_eglQueryString)(display, EGL_EXTENSIONS);
 
 	if (strstr(extensions, "EGL_KHR_fence_sync")) {
@@ -291,7 +332,10 @@ static void _init_egl_funcs(EGLDisplay display)
 	if (strstr(extensions, "EGL_ANDROID_native_fence_sync")) {
 		_eglDupNativeFenceFDANDROID = (PFNEGLDUPNATIVEFENCEFDANDROIDPROC)
 			(*_eglGetProcAddress)("eglDupNativeFenceFDANDROID");
-		assert(_eglDupNativeFenceFDANDROID);
+		if (!_eglDupNativeFenceFDANDROID)
+			fprintf(stderr, "EGL_ANDROID_native_fence_sync present but eglDupNativeFenceFDANDROID missing\n");
+	} else {
+		fprintf(stderr, "EGL_ANDROID_native_fence_sync not present; acquire fences will be unavailable\n");
 	}
 }
 
@@ -427,7 +471,7 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
 		abort();
 	}
 
-	tls_last_native_handle_id = native_handle_id;
+	push_bufid(native_handle_id);
 
 	// Our libgbm *4's the stride to match drm expectations
 	stride = stride / 4;
@@ -486,11 +530,21 @@ extern "C" void lindroid_drmws_finishSwap(EGLDisplay dpy, EGLNativeWindowType wi
 {
         _init_egl_funcs(dpy);
         WaylandNativeWindow *window = static_cast<WaylandNativeWindow *>((struct ANativeWindow *)win);
-        int id = tls_last_native_handle_id;
-        tls_last_native_handle_id = -1;
+        int id = pop_bufid_nonblocking();
+        if (id < 0)
+                id = g_last_bufid.exchange(-1, std::memory_order_acq_rel);
 
         int fence_fd = egl_create_native_fence_fd(dpy);
-        (void)evdi_submit_acquire_fence_for_id(0 /* display_id */, id, fence_fd);
+        if (id <= 0) {
+                if (fence_fd >= 0)
+                        close(fence_fd);
+                fprintf(stderr, "finishSwap: missing bufid; not submitting acquire fence\n");
+        } else if (fence_fd < 0) {
+                /* Do NOT submit -1: lindroid-drm-loopback treats <0 as clear. */
+                fprintf(stderr, "finishSwap: fence_fd=-1 for bufid=%d; not submitting/clearing\n", id);
+        } else {
+                (void)evdi_submit_acquire_fence_for_id(0 /* display_id */, id, fence_fd);
+        }
         window->finishSwap();
 }
 
