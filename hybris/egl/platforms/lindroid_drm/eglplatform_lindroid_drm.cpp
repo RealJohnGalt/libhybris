@@ -473,6 +473,9 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
 
 	push_bufid(native_handle_id);
 
+    fprintf(stderr, "passthroughImageKHR: bufid=%d buff_fd=%d w=%d h=%d stride=%d format=0x%x\n",
+            native_handle_id, buff_fd, width, height, stride, format);
+
 	// Our libgbm *4's the stride to match drm expectations
 	stride = stride / 4;
 
