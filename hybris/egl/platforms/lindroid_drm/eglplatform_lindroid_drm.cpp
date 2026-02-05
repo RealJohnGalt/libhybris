@@ -537,6 +537,8 @@ extern "C" void lindroid_drmws_finishSwap(EGLDisplay dpy, EGLNativeWindowType wi
         if (id < 0)
                 id = g_last_bufid.exchange(-1, std::memory_order_acq_rel);
 
+		fprintf(stderr, "finishswap ran");
+
         int fence_fd = egl_create_native_fence_fd(dpy);
         if (id <= 0) {
                 if (fence_fd >= 0)
@@ -547,6 +549,7 @@ extern "C" void lindroid_drmws_finishSwap(EGLDisplay dpy, EGLNativeWindowType wi
                 fprintf(stderr, "finishSwap: fence_fd=-1 for bufid=%d; not submitting/clearing\n", id);
         } else {
                 (void)evdi_submit_acquire_fence_for_id(0 /* display_id */, id, fence_fd);
+                fprintf(stderr, "finishSwap: submitting bufid\n");
         }
         window->finishSwap();
 }
