@@ -381,7 +381,6 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
         native_buffer_attribs[4] = EGL_NONE;
         *attrib_list = native_buffer_attribs;
 
-	*attrib_list = NULL;
 	*ctx = EGL_NO_CONTEXT;
 	*target = EGL_NATIVE_BUFFER_ANDROID;
 
