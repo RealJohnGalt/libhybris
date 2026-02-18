@@ -439,7 +439,9 @@ extern "C" const char *lindroid_drmws_eglQueryString(EGLDisplay dpy, EGLint name
 extern "C" void lindroid_drmws_prepareSwap(EGLDisplay dpy, EGLNativeWindowType win, EGLint *damage_rects, EGLint damage_n_rects)
 {
         WaylandNativeWindow *window = static_cast<WaylandNativeWindow *>((struct ANativeWindow *)win);
-        window->prepareSwap(damage_rects, damage_n_rects);
+        //window->prepareSwap(damage_rects, damage_n_rects);
+		// Force full damage, akin to disabling buffer age
+        window->prepareSwap(0, 0);
 }
 
 extern "C" void lindroid_drmws_finishSwap(EGLDisplay dpy, EGLNativeWindowType win)
