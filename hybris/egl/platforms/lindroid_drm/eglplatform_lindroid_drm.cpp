@@ -69,6 +69,7 @@ static __eglMustCastToProperFunctionPointerType (*_eglGetProcAddress)(const char
 static EGLSyncKHR (*_eglCreateSyncKHR)(EGLDisplay dpy, EGLenum type, const EGLint *attrib_list) = NULL;
 static EGLBoolean (*_eglDestroySyncKHR)(EGLDisplay dpy, EGLSyncKHR sync) = NULL;
 static EGLint (*_eglClientWaitSyncKHR)(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout) = NULL;
+static EGLBoolean (*_eglQuerySurface)(EGLDisplay dpy, EGLSurface surf, EGLint attr, EGLint *value) = NULL;
 
 //static std::vector<HWComposerNativeWindow *> _nativewindows;
 static std::mutex _nativewindows_mutex;
@@ -202,6 +203,28 @@ extern "C" void lindroid_drmws_init_module(struct ws_egl_interface *egl_iface)
 	eglplatformcommon_init(egl_iface);
 }
 
+static EGLBoolean lindroid_eglQuerySurface(EGLDisplay dpy, EGLSurface surf, EGLint attr, EGLint *value)
+{
+    if (value) {
+        switch (attr) {
+        case EGL_BUFFER_AGE_EXT:
+            /* full repaint. */
+            *value = 0;
+            return EGL_TRUE;
+        case EGL_SWAP_BEHAVIOR:
+            *value = EGL_BUFFER_DESTROYED;
+            return EGL_TRUE;
+        default:
+            break;
+        }
+    }
+
+    if (_eglQuerySurface) {
+        return (*_eglQuerySurface)(dpy, surf, attr, value);
+    }
+    return EGL_FALSE;
+}
+
 static void _init_egl_funcs(EGLDisplay display)
 {
 	if (_eglQueryString != NULL)
@@ -213,6 +236,8 @@ static void _init_egl_funcs(EGLDisplay display)
 	_eglGetProcAddress = (__eglMustCastToProperFunctionPointerType (*)(const char *))
 			hybris_android_egl_dlsym("eglGetProcAddress");
 	assert(_eglGetProcAddress);
+	_eglQuerySurface = (EGLBoolean (*)(EGLDisplay, EGLSurface, EGLint, EGLint *))
+			hybris_android_egl_dlsym("eglQuerySurface");
 
 	const char *extensions = (*_eglQueryString)(display, EGL_EXTENSIONS);
 
@@ -288,7 +313,11 @@ extern "C" void lindroid_drmws_DestroyWindow(EGLNativeWindowType win)
 
 extern "C" __eglMustCastToProperFunctionPointerType lindroid_drmws_eglGetProcAddress(const char *procname)
 {
-	return eglplatformcommon_eglGetProcAddress(procname);
+    if (procname && strcmp(procname, "eglQuerySurface") == 0) {
+        return (__eglMustCastToProperFunctionPointerType)lindroid_eglQuerySurface;
+    }
+
+    return eglplatformcommon_eglGetProcAddress(procname);
 }
 
 extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *target, EGLClientBuffer *buffer, const EGLint **attrib_list)
@@ -400,7 +429,7 @@ extern "C" const char *lindroid_drmws_eglQueryString(EGLDisplay dpy, EGLint name
 	{
 		static char eglextensionsbuf[2048];
 		snprintf(eglextensionsbuf, 2046, "%s %s", ret,
-			"EGL_EXT_swap_buffers_with_damage EGL_WL_create_wayland_buffer_from_image EGL_EXT_platform_base EGL_KHR_platform_gbm EGL_EXT_image_dma_buf_import EGL_EXT_image_dma_buf_import_modifiers"
+			"EGL_EXT_swap_buffers_with_damage EGL_WL_create_wayland_buffer_from_image EGL_EXT_platform_base EGL_KHR_platform_gbm EGL_EXT_image_dma_buf_import EGL_EXT_image_dma_buf_import_modifiers EGL_EXT_buffer_age"
 		);
 		ret = eglextensionsbuf;
 	}
