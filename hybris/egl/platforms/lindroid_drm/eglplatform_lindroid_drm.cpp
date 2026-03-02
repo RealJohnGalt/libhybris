@@ -143,6 +143,27 @@ int evdi_get_native_handle_t(int native_handle_id, native_handle_t **handle, boo
 	return ret;
 }
 
+uint32_t drmFourCCToHalPixelFormat(uint32_t drmFormat) {
+    switch (drmFormat) {
+        case 0x34325258: // XR24 - DRM_FORMAT_XRGB8888
+            return HAL_PIXEL_FORMAT_RGBX_8888;
+
+        case 0x34325241: // AR24 - DRM_FORMAT_ARGB8888
+            return HAL_PIXEL_FORMAT_RGBA_8888;
+
+        case 0x34324241: // AB24 - DRM_FORMAT_ABGR8888
+            fprintf(stderr, "Warning: ABGR8888 -> forcing RGBA8888 (channel swap risk)\n");
+            return HAL_PIXEL_FORMAT_RGBA_8888;
+
+        case 0x3231564E: // NV12
+            return HAL_PIXEL_FORMAT_YCbCr_420_888;
+
+        default:
+            fprintf(stderr, "Unknown DRM format: 0x%x\n", drmFormat);
+            return HAL_PIXEL_FORMAT_RGBX_8888;
+    }
+}
+
 static uint32_t get_gbm_pixel_format(int hal_format)
 {
     uint32_t format;
@@ -365,10 +386,12 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
 		abort();
 	}
 
+	fprintf(stderr, "[LIBHYBRIS] Usinig: 0x%x format\n", drmFourCCToHalPixelFormat(format));
+
 	// Convert native handle to EGLClientBuffer
 	if (!egl_get_win_buf(width, height,
 						 GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER,
-						 HAL_PIXEL_FORMAT_RGBA_8888, stride,
+						 drmFourCCToHalPixelFormat(format), stride,
 						 (native_handle_t *)full_handle, buffer)) {
 		return;
 	}

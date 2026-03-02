@@ -717,6 +717,21 @@ DrmWaylandBuffer::DrmWaylandBuffer(unsigned int w, unsigned int h, int _format, 
     ANativeWindowBuffer::format = _format;
     ANativeWindowBuffer::usage = _usage;
 
+    switch (_format) {
+        case HAL_PIXEL_FORMAT_RGBX_8888:
+            drm_format = GBM_FORMAT_XRGB8888;
+            break;
+        case HAL_PIXEL_FORMAT_RGBA_8888:
+            drm_format = GBM_FORMAT_ARGB8888;
+            break;
+        default:
+            fprintf(stderr, "Unsupported HAL format 0x%x, defaulting to XRGB\n", _format);
+            drm_format = GBM_FORMAT_XRGB8888;
+            break;
+    }
+
+    fprintf(stderr, "[LIBHYBRIS] Create Wayland Buffer with: 0x%x format\n", drm_format);
+
     if (drm_fd < 0) {
         HYBRIS_ERROR("DRM device was never open\n");
         drm_fd = evdi_open("/dev/dri/by-path/platform-evdi-lindroid.0-card");
@@ -728,7 +743,7 @@ DrmWaylandBuffer::DrmWaylandBuffer(unsigned int w, unsigned int h, int _format, 
     }
 
     // TBD: stop assuming format/use
-    bo = gbm_bo_create(gbm_dev, w, h, GBM_FORMAT_ABGR8888, GBM_BO_USE_RENDERING | GBM_BO_USE_SCANOUT);
+    bo = gbm_bo_create(gbm_dev, w, h, drm_format, GBM_BO_USE_RENDERING);
     if (!bo) {
         HYBRIS_ERROR("Failed to create GBM BO\n");
         abort();
@@ -773,16 +788,16 @@ void DrmWaylandBuffer::init(struct android_wlegl *android_wlegl, struct wl_displ
         abort();
     }
 
+    fprintf(stderr, "[LIBHYBRIS] INIT Wayland Buffer with: 0x%x format\n", drm_format);
     // Create a Wayland buffer using zwp_linux_dmabuf
     struct zwp_linux_buffer_params_v1 *params = zwp_linux_dmabuf_v1_create_params(wl_dmabuf);
     HYBRIS_ERROR("zwp_linux_buffer_params_v1_add: fd: %d\n", dmabuf_fd);
     zwp_linux_buffer_params_v1_add(params, dmabuf_fd, 0, 0,  stride * 4,  0, 0);
-    this->wlbuffer = zwp_linux_buffer_params_v1_create_immed(params, width, height, GBM_FORMAT_ABGR8888, 0);
+    this->wlbuffer = zwp_linux_buffer_params_v1_create_immed(params, width, height, drm_format, 0);
 
     wl_display_roundtrip(display);
     wl_proxy_set_queue((struct wl_proxy *) wlbuffer, queue);
 }
-
 
 DrmWaylandBuffer::~DrmWaylandBuffer() {
     if (bo) gbm_bo_destroy(bo);

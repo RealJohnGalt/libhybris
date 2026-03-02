@@ -169,6 +169,7 @@ public:
     struct gbm_bo *bo;
     int dmabuf_fd;
     struct zwp_linux_dmabuf_v1 *wl_dmabuf;
+    uint32_t drm_format;
 };
 #endif
 #endif
