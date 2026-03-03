@@ -719,14 +719,14 @@ DrmWaylandBuffer::DrmWaylandBuffer(unsigned int w, unsigned int h, int _format, 
 
     switch (_format) {
         case HAL_PIXEL_FORMAT_RGBX_8888:
-            drm_format = GBM_FORMAT_XRGB8888;
+            drm_format = GBM_FORMAT_XBGR8888;
             break;
         case HAL_PIXEL_FORMAT_RGBA_8888:
             drm_format = GBM_FORMAT_ARGB8888;
             break;
         default:
-            fprintf(stderr, "Unsupported HAL format 0x%x, defaulting to XRGB\n", _format);
-            drm_format = GBM_FORMAT_XRGB8888;
+            fprintf(stderr, "Unsupported HAL format 0x%x, defaulting to XBGR\n", _format);
+            drm_format = GBM_FORMAT_XBGR8888;
             break;
     }
 
