@@ -148,6 +148,9 @@ static uint32_t get_gbm_pixel_format(int hal_format)
     uint32_t format;
 
     switch (hal_format) {
+    case HAL_PIXEL_FORMAT_BGRA_8888:
+        format = GBM_FORMAT_ARGB8888;
+        break;
     case HAL_PIXEL_FORMAT_RGBA_8888:
         format = GBM_FORMAT_ABGR8888;
         break;
@@ -159,9 +162,6 @@ static uint32_t get_gbm_pixel_format(int hal_format)
         break;
     case HAL_PIXEL_FORMAT_RGB_565:
         format = GBM_FORMAT_RGB565;
-        break;
-    case HAL_PIXEL_FORMAT_BGRA_8888:
-        format = GBM_FORMAT_ABGR8888;
         break;
     case HAL_PIXEL_FORMAT_YV12:
         format = GBM_FORMAT_GR88;
@@ -368,7 +368,7 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
 	// Convert native handle to EGLClientBuffer
 	if (!egl_get_win_buf(width, height,
 						 GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER,
-						 HAL_PIXEL_FORMAT_RGBA_8888, stride,
+						 HAL_PIXEL_FORMAT_BGRA_8888, stride,
 						 (native_handle_t *)full_handle, buffer)) {
 		return;
 	}
@@ -432,7 +432,7 @@ extern "C" void lindroid_drmwws_getConfigAttrib(EGLDisplay *dpy, EGLConfig *conf
 }
 
 // DRM FourCC matches 1-1 with GBM one
-EGLint lindroid_formats[7] = {GBM_FORMAT_ABGR8888, GBM_FORMAT_XRGB8888, GBM_FORMAT_RGB888, GBM_FORMAT_RGB565, GBM_FORMAT_GR88, GBM_FORMAT_ABGR16161616F, GBM_FORMAT_ABGR2101010};
+EGLint lindroid_formats[8] = {GBM_FORMAT_ARGB8888, GBM_FORMAT_ABGR8888, GBM_FORMAT_XRGB8888, GBM_FORMAT_RGB888, GBM_FORMAT_RGB565, GBM_FORMAT_GR88, GBM_FORMAT_ABGR16161616F, GBM_FORMAT_ABGR2101010};
 
 extern "C" EGLBoolean lindroid_drmws_queryDmaBufFormatsEXT(EGLDisplay dpy, EGLint max_formats, EGLint *formats, EGLint *num_formats)
 {
