@@ -167,6 +167,7 @@ public:
 
     struct gbm_bo *bo;
     int dmabuf_fd;
+    bool imported_handle;
     struct zwp_linux_dmabuf_v1 *wl_dmabuf;
 };
 #endif

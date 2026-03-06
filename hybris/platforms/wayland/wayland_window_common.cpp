@@ -697,10 +697,11 @@ void ServerWaylandBuffer::init(android_wlegl *, wl_display *, wl_event_queue *qu
 extern int drm_fd;
 extern struct gbm_device *gbm_dev;
 extern int evdi_open(char *device_path);
-extern int evdi_get_native_handle_t(int native_handle_id, native_handle_t **handle, bool import);
+extern int evdi_get_native_handle_t(int native_handle_id, native_handle_t **handle,
+                                    bool import, bool *imported_out);
 
 DrmWaylandBuffer::DrmWaylandBuffer(unsigned int w, unsigned int h, int _format, uint64_t _usage, struct wl_display *display, struct wl_event_queue *queue, struct zwp_linux_dmabuf_v1 *dmabuf)
-    : WaylandNativeWindowBuffer(), bo(nullptr), dmabuf_fd(-1), wl_dmabuf(dmabuf)
+    : WaylandNativeWindowBuffer(), bo(nullptr), dmabuf_fd(-1), imported_handle(false), wl_dmabuf(dmabuf)
 {
     this->common.incRef(&this->common);
 
@@ -751,7 +752,8 @@ DrmWaylandBuffer::DrmWaylandBuffer(unsigned int w, unsigned int h, int _format, 
         abort();
     }
 
-    ret = evdi_get_native_handle_t(native_handle_id, (native_handle_t**)&handle, true);
+    ret = evdi_get_native_handle_t(native_handle_id, (native_handle_t**)&handle,
+                                   true, &imported_handle);
     if(ret) {
         HYBRIS_ERROR("Failed to import bo\n");
         abort();
@@ -778,10 +780,19 @@ void DrmWaylandBuffer::init(struct android_wlegl *android_wlegl, struct wl_displ
 }
 
 DrmWaylandBuffer::~DrmWaylandBuffer() {
-    if (bo) gbm_bo_destroy(bo);
-    if (dmabuf_fd >= 0) close(dmabuf_fd);
-    if (handle)
-        hybris_gralloc_release(handle, 1);
+    if (bo)
+        gbm_bo_destroy(bo);
+    if (dmabuf_fd >= 0)
+        close(dmabuf_fd);
+    if (handle) {
+        if (imported_handle)
+            hybris_gralloc_release((buffer_handle_t)handle, 1);
+        else {
+            native_handle_t *mutable_handle = const_cast<native_handle_t *>(handle);
+            native_handle_close(mutable_handle);
+            native_handle_delete(mutable_handle);
+        }
+    }
 }
 #endif // WANT_LINDROID_DRM
 // vim: noai:ts=4:sw=4:ss=4:expandtab
