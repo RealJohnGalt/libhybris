@@ -4,7 +4,8 @@ libdir=@libdir@
 includedir=@includedir@
 
 Name: hybris-vibrator
-Description: libhybris vibrator library
+Description: libhybris vibrator library (multi-backend support)
 Version: @VERSION@
+Requires: hybris-common
 Libs: -L${libdir} -lhybris-common -lvibrator
 Cflags: -I${includedir}
