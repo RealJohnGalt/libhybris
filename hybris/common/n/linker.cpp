@@ -68,7 +68,6 @@
 #include "linker_non_pie.h"
 #endif
 
-#include "../tls_patcher.h"
 #ifdef WANT_ARM_TRACING
 #include "../wrappers.h"
 #endif
@@ -4760,9 +4759,9 @@ static void __linker_cannot_link(KernelArgumentBlock& args) {
 }
 
 #ifdef WANT_ARM_TRACING
-extern "C" void android_linker_init(int sdk_version, void* (*get_hooked_symbol)(const char*, const char*), int enable_linker_gdb_support, hybris_tls_patcher_t tls_patcher, void *(create_wrapper)(const char*, void*, int), int wrapping_enabled) {
+extern "C" void android_linker_init(int sdk_version, void* (*get_hooked_symbol)(const char*, const char*), int enable_linker_gdb_support, void *(create_wrapper)(const char*, void*, int), int wrapping_enabled) {
 #else
-extern "C" void android_linker_init(int sdk_version, void* (*get_hooked_symbol)(const char*, const char*), int enable_linker_gdb_support, hybris_tls_patcher_t tls_patcher) {
+extern "C" void android_linker_init(int sdk_version, void* (*get_hooked_symbol)(const char*, const char*), int enable_linker_gdb_support) {
 #endif
   // Get a few environment variables.
   const char* LD_DEBUG = getenv("HYBRIS_LD_DEBUG");
