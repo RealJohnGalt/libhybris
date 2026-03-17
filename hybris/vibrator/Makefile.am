@@ -6,10 +6,6 @@ libvibrator_la_SOURCES = \
 	vibrator_legacy.c \
 	vibrator_sysfs.c
 
-libvibrator_la_SOURCES += \
-	vibrator_aidl.cpp \
-	vibrator_hidl.cpp
-
 libvibrator_la_CFLAGS = \
 	-I$(top_srcdir)/include \
 	$(ANDROID_HEADERS_CFLAGS) \
