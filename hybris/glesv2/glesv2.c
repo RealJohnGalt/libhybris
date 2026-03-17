@@ -118,12 +118,18 @@ const GLubyte *glGetString (GLenum name)
 		const char* v = (const char*)glGetString(GL_VERSION);
 		int gles_major = 0;
 		sscanf(v, "OpenGL ES %d", &gles_major);
-		if (!strstr(ret, "GL_EXT_unpack_subimage") && gles_major >= 3)
+		if (gles_major >= 3 &&
+			(!strstr(ret, "GL_EXT_unpack_subimage") ||
+			 !strstr(ret, "GL_EXT_draw_buffers")))
 		{
 			static unsigned char glesextensionsbuf[8192];
-			snprintf(glesextensionsbuf, 8190, "%s %s", ret,
-				 "GL_EXT_unpack_subimage "
-			);
+			snprintf((char *)glesextensionsbuf, sizeof(glesextensionsbuf), "%s", ret);
+			if (!strstr(ret, "GL_EXT_unpack_subimage"))
+				strncat((char *)glesextensionsbuf, " GL_EXT_unpack_subimage",
+					sizeof(glesextensionsbuf) - strlen((char *)glesextensionsbuf) - 1);
+			if (!strstr(ret, "GL_EXT_draw_buffers"))
+				strncat((char *)glesextensionsbuf, " GL_EXT_draw_buffers",
+					sizeof(glesextensionsbuf) - strlen((char *)glesextensionsbuf) - 1);
 			ret = glesextensionsbuf;
 		}
 	}
@@ -259,10 +265,18 @@ HYBRIS_IMPLEMENT_VOID_FUNCTION3(glesv2, glClearBufferiv, GLenum, GLint, const GL
 HYBRIS_IMPLEMENT_VOID_FUNCTION3(glesv2, glClearBufferuiv, GLenum, GLint, const GLuint *);
 HYBRIS_IMPLEMENT_VOID_FUNCTION3(glesv2, glClearBufferfv, GLenum, GLint, const GLfloat *);
 HYBRIS_IMPLEMENT_VOID_FUNCTION4(glesv2, glClearBufferfi, GLenum, GLint, GLfloat, GLint);
+static void (*_glDrawBuffersEXT)(GLsizei, const GLenum *) = NULL;
+void glDrawBuffersEXT (GLsizei n, const GLenum *bufs)
+{
+HYBRIS_DLSYSM(glesv2, &_glDrawBuffersEXT, "glDrawBuffers");
+_glDrawBuffersEXT(n, bufs);
+}
 const GLubyte *(*_glGetStringi) (GLenum name, GLuint index) = NULL;
 static void (*_glGetIntegerv)(GLenum pname, GLint *data) = NULL;
 void (*_glPixelStorei)(GLenum pname, GLint param) = NULL;
 
+static bool has_native_draw_buffers_ext = false;
+static bool advertise_draw_buffers_ext = false;
 bool has_unpack_subimage = false;
 static GLint max_extensions = 0;
 bool glGetString_init_done = false;
@@ -277,20 +291,22 @@ void init_glGetString()
 	for (GLint i = 0; i < max_extensions; i++) {
 		const char *ext = (const char *)_glGetStringi(GL_EXTENSIONS, i);
 		if (strcmp(ext, "GL_EXT_unpack_subimage") == 0)
-		{
 			has_unpack_subimage = true;
-			return;
-		}
+		if (strcmp(ext, "GL_EXT_draw_buffers") == 0)
+			has_native_draw_buffers_ext = true;
 	}
 	// Dont try to implement if we are on gles<3
 	const char* v = (const char*)glGetString(GL_VERSION);
         int gles_major = 0;
         sscanf(v, "OpenGL ES %d", &gles_major);
 
-	if(gles_major >= 3)
-		has_unpack_subimage = false;
-	else
+	if(gles_major >= 3) {
+		advertise_draw_buffers_ext = !has_native_draw_buffers_ext;
+	} else {
+		advertise_draw_buffers_ext = false;
 		has_unpack_subimage = true;
+	}
+	glGetString_init_done = true;
 }
 
 void glGetIntegerv (GLenum pname, GLint *data)
@@ -321,9 +337,12 @@ void glGetIntegerv (GLenum pname, GLint *data)
 		_glGetIntegerv(pname, data);
 	}
 
-	if(!has_unpack_subimage && pname == GL_NUM_EXTENSIONS)
+	if(pname == GL_NUM_EXTENSIONS)
 	{
-		*data += 1;
+		if(!has_unpack_subimage)
+			*data += 1;
+		if(advertise_draw_buffers_ext)
+			*data += 1;
 	}
 }
 
@@ -363,9 +382,15 @@ const GLubyte *glGetStringi (GLenum name, GLuint index)
 		init_glGetString();
 	}
 
-	if (!has_unpack_subimage && name == GL_EXTENSIONS && index == max_extensions)
+	if (name == GL_EXTENSIONS)
 	{
-		return (const GLubyte *)"GL_EXT_unpack_subimage";
+		GLuint next = max_extensions;
+		if (!has_unpack_subimage && index == next)
+			return (const GLubyte *)"GL_EXT_unpack_subimage";
+		if (!has_unpack_subimage)
+			next++;
+		if (advertise_draw_buffers_ext && index == next)
+			return (const GLubyte *)"GL_EXT_draw_buffers";
 	}
 
         return _glGetStringi(name, index);
