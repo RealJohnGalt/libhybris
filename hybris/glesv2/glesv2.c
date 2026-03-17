@@ -120,7 +120,8 @@ const GLubyte *glGetString (GLenum name)
 		sscanf(v, "OpenGL ES %d", &gles_major);
 		if (gles_major >= 3 &&
 			(!strstr(ret, "GL_EXT_unpack_subimage") ||
-			 !strstr(ret, "GL_EXT_draw_buffers")))
+			 !strstr(ret, "GL_EXT_draw_buffers") ||
+			 !strstr(ret, "GL_EXT_shader_texture_lod")))
 		{
 			static unsigned char glesextensionsbuf[8192];
 			snprintf((char *)glesextensionsbuf, sizeof(glesextensionsbuf), "%s", ret);
@@ -129,6 +130,9 @@ const GLubyte *glGetString (GLenum name)
 					sizeof(glesextensionsbuf) - strlen((char *)glesextensionsbuf) - 1);
 			if (!strstr(ret, "GL_EXT_draw_buffers"))
 				strncat((char *)glesextensionsbuf, " GL_EXT_draw_buffers",
+					sizeof(glesextensionsbuf) - strlen((char *)glesextensionsbuf) - 1);
+			if (!strstr(ret, "GL_EXT_shader_texture_lod"))
+				strncat((char *)glesextensionsbuf, " GL_EXT_shader_texture_lod",
 					sizeof(glesextensionsbuf) - strlen((char *)glesextensionsbuf) - 1);
 			ret = glesextensionsbuf;
 		}
@@ -277,6 +281,8 @@ void (*_glPixelStorei)(GLenum pname, GLint param) = NULL;
 
 static bool has_native_draw_buffers_ext = false;
 static bool advertise_draw_buffers_ext = false;
+static bool has_native_shader_texture_lod_ext = false;
+static bool advertise_shader_texture_lod_ext = false;
 bool has_unpack_subimage = false;
 static GLint max_extensions = 0;
 bool glGetString_init_done = false;
@@ -294,6 +300,8 @@ void init_glGetString()
 			has_unpack_subimage = true;
 		if (strcmp(ext, "GL_EXT_draw_buffers") == 0)
 			has_native_draw_buffers_ext = true;
+		if (strcmp(ext, "GL_EXT_shader_texture_lod") == 0)
+			has_native_shader_texture_lod_ext = true;
 	}
 	// Dont try to implement if we are on gles<3
 	const char* v = (const char*)glGetString(GL_VERSION);
@@ -302,8 +310,10 @@ void init_glGetString()
 
 	if(gles_major >= 3) {
 		advertise_draw_buffers_ext = !has_native_draw_buffers_ext;
+		advertise_shader_texture_lod_ext = !has_native_shader_texture_lod_ext;
 	} else {
 		advertise_draw_buffers_ext = false;
+		advertise_shader_texture_lod_ext = false;
 		has_unpack_subimage = true;
 	}
 	glGetString_init_done = true;
@@ -342,6 +352,8 @@ void glGetIntegerv (GLenum pname, GLint *data)
 		if(!has_unpack_subimage)
 			*data += 1;
 		if(advertise_draw_buffers_ext)
+			*data += 1;
+		if(advertise_shader_texture_lod_ext)
 			*data += 1;
 	}
 }
@@ -391,6 +403,10 @@ const GLubyte *glGetStringi (GLenum name, GLuint index)
 			next++;
 		if (advertise_draw_buffers_ext && index == next)
 			return (const GLubyte *)"GL_EXT_draw_buffers";
+		if (advertise_draw_buffers_ext)
+			next++;
+		if (advertise_shader_texture_lod_ext && index == next)
+			return (const GLubyte *)"GL_EXT_shader_texture_lod";
 	}
 
         return _glGetStringi(name, index);
