@@ -737,16 +737,15 @@ void DrmWaylandBuffer::init(
     for (int i = 0; i < nh->numFds; i++)
         zwp_linux_buffer_params_v1_add(params, nh->data[i], i, 0, stride * 4, 0, 0);
 
-    size_t buffer_size = sizeof(int) * (4 + nh->numInts);
-    std::vector<int> buffer(4 + nh->numInts);
+    size_t buffer_size = sizeof(int) * (3 + nh->numInts);
+    std::vector<int> buffer(3 + nh->numInts);
 
-    buffer[0] = -1;
-    buffer[1] = nh->version;
-    buffer[2] = nh->numFds;
-    buffer[3] = nh->numInts;
+    buffer[0] = nh->version;
+    buffer[1] = nh->numFds;
+    buffer[2] = nh->numInts;
 
     for (int i = 0; i < nh->numInts; i++)
-        buffer[4 + i] = nh->data[nh->numFds + i];
+        buffer[3 + i] = nh->data[nh->numFds + i];
 
     int meta_fd = memfd_create("lindroid-meta", MFD_CLOEXEC);
     if (ftruncate(meta_fd, buffer_size) != 0) {

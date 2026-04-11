@@ -111,35 +111,6 @@ int evdi_open(char *device_path) {
 	return fd;
 }
 
-int evdi_get_native_handle_t(int native_handle_id, native_handle_t **handle, bool import) {
-	struct drm_evdi_gbm_get_buff cmd;
-	int ret = 0;
-	native_handle_t *tmp_handle;
-	cmd.id = native_handle_id;
-	cmd.native_handle = malloc(max_native_handle_size);
-
-	ret = ioctl(drm_fd, DRM_IOCTL_EVDI_GBM_GET_BUFF, &cmd);
-	if (ret < 0) {
-		fprintf(stderr, "DRM_IOCTL_EVDI_GBM_GET_BUFF failed, do fd come from non lindroid driver?");
-		return ret;
-	}
-
-	tmp_handle = (native_handle_t*)cmd.native_handle;
-	if (!tmp_handle) {
-		fprintf(stderr, "failed to clone handle");
-		return -ENOMEM;
-	}
-
-	if(import && hybris_gralloc_import_buffer((const native_handle_t*)tmp_handle, (buffer_handle_t*)handle)) {
-		fprintf(stderr, "failed to import buf, attempting to use as is");
-		*handle = tmp_handle;
-	} else {
-		native_handle_close(tmp_handle);
-		native_handle_delete(tmp_handle);
-	}
-	return ret;
-}
-
 static uint32_t get_gbm_pixel_format(int hal_format)
 {
     uint32_t format;
@@ -335,18 +306,17 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
     meta_fd = plane_fds[num_planes - 1];
     num_planes--;
 
-    int header[4];
+    int header[3];
     if (pread(meta_fd, header, sizeof(header), 0) != (ssize_t)sizeof(header)) {
         fprintf(stderr, "Failed to read meta_fd\n");
         abort();
     }
 
-    int evdi_buff_id = header[0];
-    int version = header[1];
-    int numFds = header[2];
-    int numInts = header[3];
+    int version = header[0];
+    int numFds = header[1];
+    int numInts = header[2];
 
-    if (evdi_buff_id == -1 && numInts > 0) {
+    if (numInts > 0) {
 	    int meta_extra[numInts];
 	    if (pread(meta_fd, meta_extra, numInts * sizeof(int), sizeof(header)) != (ssize_t)(numInts * sizeof(int))) {
 	        fprintf(stderr, "Failed to read extra metadata\n");
@@ -367,13 +337,7 @@ extern "C" void lindroid_drmws_passthroughImageKHR(EGLContext *ctx, EGLenum *tar
             full_handle = const_cast<native_handle_t*>(out_handle);
 
         native_handle_delete(nh);
-	} else {
-		// Attempt to get buffer from create-disp
-		if (evdi_get_native_handle_t(evdi_buff_id, &full_handle, true) != 0 || !full_handle) {
-			fprintf(stderr, "Fatal: failed to get native handle\n");
-			abort();
-		}
-    }
+	}
 
 	// Prevent HWC from alpha-blending garbage
 	int hal_format = (format == DRM_FORMAT_XRGB8888 || format == DRM_FORMAT_XBGR8888)
