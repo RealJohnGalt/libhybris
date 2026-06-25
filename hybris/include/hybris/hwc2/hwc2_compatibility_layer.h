@@ -156,6 +156,8 @@ extern "C" {
 
     int32_t hwc2_compat_out_fences_get_fence(hwc2_compat_out_fences_t* fences,
                                              hwc2_compat_layer_t* layer);
+    int32_t hwc2_compat_out_fences_get_display_fence(hwc2_compat_out_fences_t* fences,
+                                                     hwc2_display_t display_id);
     void hwc2_compat_out_fences_destroy(hwc2_compat_out_fences_t* fences);
 
 #ifdef __cplusplus

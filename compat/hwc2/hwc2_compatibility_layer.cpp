@@ -405,6 +405,16 @@ hwc2_error_t hwc2_compat_layer_set_visible_region(hwc2_compat_layer_t* layer,
     return static_cast<hwc2_error_t>(error);
 }
 
+int32_t hwc2_compat_out_fences_get_display_fence(hwc2_compat_out_fences_t* fences,
+                                                 hwc2_display_t display_id)
+{
+    auto iter = fences->fences.find(display_id);
+    if (iter != fences->fences.end()) {
+        return iter->second->dup();
+    }
+    return -1;
+}
+
 int32_t hwc2_compat_out_fences_get_fence(hwc2_compat_out_fences_t* fences,
                                          hwc2_compat_layer_t* layer)
 {
