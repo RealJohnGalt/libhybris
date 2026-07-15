@@ -569,7 +569,7 @@ EGLuint64KHR lindroid_modifiers_common[1] = {DRM_FORMAT_MOD_LINEAR};
 
 extern "C" EGLBoolean lindroid_drmws_queryDmaBufModifiersEXT(EGLDisplay dpy, EGLint format, EGLint max_modifiers, EGLuint64KHR *modifiers, EGLBoolean *external_only, EGLint *num_modifiers)
 {
-	if(max_modifiers < 0)
+	if(max_modifiers < 0 || !num_modifiers)
 		return EGL_FALSE;
 
 	*num_modifiers = sizeof(lindroid_modifiers_common) / sizeof(lindroid_modifiers_common[0]);
@@ -578,9 +578,13 @@ extern "C" EGLBoolean lindroid_drmws_queryDmaBufModifiersEXT(EGLDisplay dpy, EGL
 
 	*num_modifiers = sizeof(lindroid_modifiers_common) / sizeof(lindroid_modifiers_common[0]);
 
+	if (!modifiers)
+		return EGL_FALSE;
+
 	for(int i = 0; i < std::min(sizeof(lindroid_modifiers_common) / sizeof(lindroid_modifiers_common[0]), static_cast<size_t>(max_modifiers)); i++) {
 		modifiers[i] = lindroid_modifiers_common[i];
-		if(external_only)
+
+		if (external_only)
 			external_only[i] = EGL_FALSE;
 	}
 
