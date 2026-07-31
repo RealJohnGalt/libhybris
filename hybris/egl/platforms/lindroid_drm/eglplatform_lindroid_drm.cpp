@@ -69,6 +69,13 @@ struct LindroidDisplay {
 static const char *  (*_eglQueryString)(EGLDisplay dpy, EGLint name) = NULL;
 static __eglMustCastToProperFunctionPointerType (*_eglGetProcAddress)(const char *procname) = NULL;
 
+static int lindroid_drm_mutter_quirks = 0;
+
+static void lindroid_drm_latch_mutter_quirks(void)
+{
+	lindroid_drm_mutter_quirks = 1;
+}
+
 static bool lindroid_native_display_is_gbm(EGLNativeDisplayType display)
 {
     const struct gbm_device *gbm;
@@ -342,6 +349,7 @@ extern "C" void lindroid_drmws_DestroyWindow(EGLNativeWindowType win)
 
 static EGLBoolean lindroid_eglQueryDisplayAttribEXT(EGLDisplay dpy, EGLint attribute, EGLAttrib *value)
 {
+	lindroid_drm_latch_mutter_quirks();
 	(void)dpy;
 	if (attribute == EGL_DEVICE_EXT) {
 		*value = 1;
@@ -352,6 +360,7 @@ static EGLBoolean lindroid_eglQueryDisplayAttribEXT(EGLDisplay dpy, EGLint attri
 
 static EGLBoolean lindroid_eglQueryDevicesEXT(EGLint max_devices, EGLDeviceEXT *devices, EGLint *num_devices)
 {
+	lindroid_drm_latch_mutter_quirks();
 	*num_devices = 1;
 	if (devices && max_devices > 0)
 		devices[0] = (EGLDeviceEXT)1;
@@ -360,6 +369,7 @@ static EGLBoolean lindroid_eglQueryDevicesEXT(EGLint max_devices, EGLDeviceEXT *
 
 static const char *lindroid_eglQueryDeviceStringEXT(EGLDeviceEXT device, EGLint attribute)
 {
+	lindroid_drm_latch_mutter_quirks();
 	(void)device;
 	switch (attribute) {
 	case EGL_DRM_DEVICE_FILE_EXT:
@@ -530,6 +540,36 @@ extern "C" void lindroid_drmws_destroyImageKHR(EGLImageKHR image) {
 	buf->common.decRef(&buf->common);
 }
 
+static const char *filter_extensions(const char *in)
+{
+	static char filtered[2048];
+	const char *tok = "EGL_WL_bind_wayland_display";
+	size_t tok_len = strlen(tok);
+	size_t len = 0;
+	const char *p = in;
+
+	while (*p)
+	{
+		const char *sp = strchr(p, ' ');
+		size_t word = sp ? (size_t)(sp - p) : strlen(p);
+
+		if (word > 0 && !(word == tok_len && strncmp(p, tok, word) == 0))
+		{
+			if (len)
+				filtered[len++] = ' ';
+			memcpy(filtered + len, p, word);
+			len += word;
+			filtered[len] = '\0';
+		}
+
+		if (!sp)
+			break;
+		p = sp + 1;
+	}
+
+	return filtered;
+}
+
 extern "C" const char *lindroid_drmws_eglQueryString(EGLDisplay dpy, EGLint name, const char *(*real_eglQueryString)(EGLDisplay dpy, EGLint name))
 {
 	const char *ret = eglplatformcommon_eglQueryString(dpy, name, real_eglQueryString);
@@ -548,7 +588,7 @@ extern "C" const char *lindroid_drmws_eglQueryString(EGLDisplay dpy, EGLint name
 			" EGL_EXT_device_drm_render_node",
 			ret
 		);
-		ret = eglextensionsbuf;
+		ret = lindroid_drm_mutter_quirks ? filter_extensions(eglextensionsbuf) : eglextensionsbuf;
 	}
 	return ret;
 }

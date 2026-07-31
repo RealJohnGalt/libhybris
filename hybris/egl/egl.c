@@ -51,6 +51,15 @@ static int _egl_context_client_version = 1;
 static EGLDisplay current_display = EGL_NO_DISPLAY;
 static EGLenum    loaded_ws = EGL_NONE;
 
+#ifdef WANT_LINDROID_DRM_GLOBAL
+static int lindroid_drm_mutter_quirks = 0;
+
+static void lindroid_drm_latch_mutter_quirks(void)
+{
+	lindroid_drm_mutter_quirks = 1;
+}
+#endif
+
 static EGLint      (*_eglGetError)(void) = NULL;
 
 static EGLDisplay  (*_eglGetDisplay)(EGLNativeDisplayType display_id) = NULL;
@@ -716,6 +725,9 @@ EGLBoolean _my_eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR image)
 
 static EGLBoolean _my_eglQueryDisplayAttribEXT(EGLDisplay dpy, EGLint attribute, EGLAttrib *value)
 {
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	lindroid_drm_latch_mutter_quirks();
+#endif
 	__eglMustCastToProperFunctionPointerType fn = ws_eglGetProcAddress("eglQueryDisplayAttribEXT");
 	if (fn) {
 		typedef EGLBoolean (*func_t)(EGLDisplay, EGLint, EGLAttrib *);
@@ -726,6 +738,9 @@ static EGLBoolean _my_eglQueryDisplayAttribEXT(EGLDisplay dpy, EGLint attribute,
 
 static EGLBoolean _my_eglQueryDevicesEXT(EGLint max_devices, EGLDeviceEXT *devices, EGLint *num_devices)
 {
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	lindroid_drm_latch_mutter_quirks();
+#endif
 	__eglMustCastToProperFunctionPointerType fn = ws_eglGetProcAddress("eglQueryDevicesEXT");
 	if (fn) {
 		typedef EGLBoolean (*func_t)(EGLint, EGLDeviceEXT *, EGLint *);
@@ -736,6 +751,9 @@ static EGLBoolean _my_eglQueryDevicesEXT(EGLint max_devices, EGLDeviceEXT *devic
 
 static const char *_my_eglQueryDeviceStringEXT(EGLDeviceEXT device, EGLint attribute)
 {
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	lindroid_drm_latch_mutter_quirks();
+#endif
 	__eglMustCastToProperFunctionPointerType fn = ws_eglGetProcAddress("eglQueryDeviceStringEXT");
 	if (fn) {
 		typedef const char *(*func_t)(EGLDeviceEXT, EGLint);
@@ -848,6 +866,26 @@ static int compare_search(const void * key, const void * item)
 __eglMustCastToProperFunctionPointerType eglGetProcAddress(const char *procname)
 {
 	HYBRIS_DLSYSM(egl, &_eglGetProcAddress, "eglGetProcAddress");
+
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	if (loaded_ws == EGL_PLATFORM_GBM_KHR && lindroid_drm_mutter_quirks)
+	{
+		static const char *hidden_procs[] = {
+			"eglBindWaylandDisplayWL",
+			"eglUnbindWaylandDisplayWL",
+			"eglQueryWaylandBufferWL",
+			"glMapBuffer",
+			"glMapBufferOES",
+			"glMapBufferOESEXT",
+			"glMapBufferEXT",
+			"glMapBufferRange",
+			"glMapBufferRangeEXT",
+		};
+		for (size_t i = 0; i < sizeof(hidden_procs)/sizeof(hidden_procs[0]); i++)
+			if (strcmp(procname, hidden_procs[i]) == 0)
+				return NULL;
+	}
+#endif
 
 	if (!_eglHybrisOverrideFunctions_sorted) {
 		_eglHybrisOverrideFunctions_sorted = EGL_TRUE;
