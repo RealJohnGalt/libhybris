@@ -51,6 +51,15 @@ static int _egl_context_client_version = 1;
 static EGLDisplay current_display = EGL_NO_DISPLAY;
 static EGLenum    loaded_ws = EGL_NONE;
 
+#ifdef WANT_LINDROID_DRM_GLOBAL
+static int lindroid_drm_mutter_quirks = 0;
+
+static void lindroid_drm_latch_mutter_quirks(void)
+{
+	lindroid_drm_mutter_quirks = 1;
+}
+#endif
+
 static EGLint      (*_eglGetError)(void) = NULL;
 
 static EGLDisplay  (*_eglGetDisplay)(EGLNativeDisplayType display_id) = NULL;
@@ -217,6 +226,10 @@ struct _EGLDisplay *hybris_egl_display_get_mapping(EGLDisplay display)
 	if (loaded_ws == EGL_PLATFORM_WAYLAND_KHR)
 		return (struct _EGLDisplay *) display;
 #endif
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	if (loaded_ws == EGL_PLATFORM_GBM_KHR)
+		return (struct _EGLDisplay *) display;
+#endif
 
 	return hybris_egl_display_get_mapping_for_type((EGLNativeDisplayType) display);
 }
@@ -225,6 +238,10 @@ EGLDisplay hybris_egl_get_real_display(EGLDisplay display)
 {
 #ifdef WANT_WAYLAND
 	if (loaded_ws == EGL_PLATFORM_WAYLAND_KHR)
+		return ((struct _EGLDisplay *) display)->dpy;
+#endif
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	if (loaded_ws == EGL_PLATFORM_GBM_KHR)
 		return ((struct _EGLDisplay *) display)->dpy;
 #endif
 
@@ -269,6 +286,10 @@ static EGLenum _getPlatformFromString(const char* hybris_ws)
 #ifdef WANT_WAYLAND
 	} else if (strcmp(hybris_ws, "wayland") == 0) {
 		return EGL_PLATFORM_WAYLAND_KHR;
+#endif
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	} else if (strcmp(hybris_ws, "lindroid-drm") == 0) {
+		return EGL_PLATFORM_GBM_KHR;
 #endif
 	} else if (strcmp(hybris_ws, "x11") == 0) {
 		return EGL_PLATFORM_X11_KHR;
@@ -345,6 +366,11 @@ EGLDisplay __eglHybrisGetPlatformDisplayCommon(EGLenum platform,
 		target_display_id = (EGLNativeDisplayType) display_id;
 	else
 #endif
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	if (loaded_ws == EGL_PLATFORM_GBM_KHR)
+		target_display_id = (EGLNativeDisplayType) display_id;
+	else
+#endif
 		target_display_id = (EGLNativeDisplayType) real_display;
 
 	struct _EGLDisplay *dpy = hybris_egl_display_get_mapping_for_type(target_display_id);
@@ -360,6 +386,10 @@ EGLDisplay __eglHybrisGetPlatformDisplayCommon(EGLenum platform,
 
 #ifdef WANT_WAYLAND
 	if (loaded_ws == EGL_PLATFORM_WAYLAND_KHR)
+		return (EGLDisplay) dpy;
+#endif
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	if (loaded_ws == EGL_PLATFORM_GBM_KHR)
 		return (EGLDisplay) dpy;
 #endif
 	return real_display;
@@ -693,6 +723,45 @@ EGLBoolean _my_eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR image)
 	return ret;
 }
 
+static EGLBoolean _my_eglQueryDisplayAttribEXT(EGLDisplay dpy, EGLint attribute, EGLAttrib *value)
+{
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	lindroid_drm_latch_mutter_quirks();
+#endif
+	__eglMustCastToProperFunctionPointerType fn = ws_eglGetProcAddress("eglQueryDisplayAttribEXT");
+	if (fn) {
+		typedef EGLBoolean (*func_t)(EGLDisplay, EGLint, EGLAttrib *);
+		return ((func_t)fn)(dpy, attribute, value);
+	}
+	return EGL_FALSE;
+}
+
+static EGLBoolean _my_eglQueryDevicesEXT(EGLint max_devices, EGLDeviceEXT *devices, EGLint *num_devices)
+{
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	lindroid_drm_latch_mutter_quirks();
+#endif
+	__eglMustCastToProperFunctionPointerType fn = ws_eglGetProcAddress("eglQueryDevicesEXT");
+	if (fn) {
+		typedef EGLBoolean (*func_t)(EGLint, EGLDeviceEXT *, EGLint *);
+		return ((func_t)fn)(max_devices, devices, num_devices);
+	}
+	return EGL_FALSE;
+}
+
+static const char *_my_eglQueryDeviceStringEXT(EGLDeviceEXT device, EGLint attribute)
+{
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	lindroid_drm_latch_mutter_quirks();
+#endif
+	__eglMustCastToProperFunctionPointerType fn = ws_eglGetProcAddress("eglQueryDeviceStringEXT");
+	if (fn) {
+		typedef const char *(*func_t)(EGLDeviceEXT, EGLint);
+		return ((func_t)fn)(device, attribute);
+	}
+	return NULL;
+}
+
 struct FuncNamePair {
 	const char * name;
 	__eglMustCastToProperFunctionPointerType func;
@@ -741,6 +810,11 @@ static struct FuncNamePair _eglHybrisOverrideFunctions[] = {
 	OVERRIDE_SAMENAME(eglCopyBuffers),
 	OVERRIDE_SAMENAME(eglQueryString),
 	OVERRIDE_SAMENAME(eglSetDamageRegionKHR),
+	OVERRIDE_MY(eglQueryDisplayAttribEXT),
+	OVERRIDE_TO(eglQueryDisplayAttribKHR, _my_eglQueryDisplayAttribEXT),
+	OVERRIDE_TO(eglQueryDisplayAttribNV, _my_eglQueryDisplayAttribEXT),
+	OVERRIDE_MY(eglQueryDevicesEXT),
+	OVERRIDE_MY(eglQueryDeviceStringEXT),
 	/*
 	 * EGL_EXT_platform_base, in case Android EGL or glvnd advertise its
 	 * support.
@@ -792,6 +866,26 @@ static int compare_search(const void * key, const void * item)
 __eglMustCastToProperFunctionPointerType eglGetProcAddress(const char *procname)
 {
 	HYBRIS_DLSYSM(egl, &_eglGetProcAddress, "eglGetProcAddress");
+
+#ifdef WANT_LINDROID_DRM_GLOBAL
+	if (loaded_ws == EGL_PLATFORM_GBM_KHR && lindroid_drm_mutter_quirks)
+	{
+		static const char *hidden_procs[] = {
+			"eglBindWaylandDisplayWL",
+			"eglUnbindWaylandDisplayWL",
+			"eglQueryWaylandBufferWL",
+			"glMapBuffer",
+			"glMapBufferOES",
+			"glMapBufferOESEXT",
+			"glMapBufferEXT",
+			"glMapBufferRange",
+			"glMapBufferRangeEXT",
+		};
+		for (size_t i = 0; i < sizeof(hidden_procs)/sizeof(hidden_procs[0]); i++)
+			if (strcmp(procname, hidden_procs[i]) == 0)
+				return NULL;
+	}
+#endif
 
 	if (!_eglHybrisOverrideFunctions_sorted) {
 		_eglHybrisOverrideFunctions_sorted = EGL_TRUE;
