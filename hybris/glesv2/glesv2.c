@@ -225,7 +225,9 @@ HYBRIS_IMPLEMENT_VOID_FUNCTION4(glesv2, glUniformMatrix4x3fv, GLint, GLsizei, GL
 HYBRIS_IMPLEMENT_VOID_FUNCTION10(glesv2, glBlitFramebuffer, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum);
 HYBRIS_IMPLEMENT_VOID_FUNCTION5(glesv2, glRenderbufferStorageMultisample, GLenum, GLsizei, GLenum, GLsizei, GLsizei);
 HYBRIS_IMPLEMENT_VOID_FUNCTION5(glesv2, glFramebufferTextureLayer, GLenum, GLenum, GLuint, GLint, GLint);
+#ifndef WANT_LINDROID_DRM_GLOBAL
 HYBRIS_IMPLEMENT_FUNCTION4(glesv2, void *, glMapBufferRange, GLenum, GLintptr, GLsizeiptr, GLbitfield);
+#endif
 HYBRIS_IMPLEMENT_VOID_FUNCTION3(glesv2, glFlushMappedBufferRange, GLenum, GLintptr, GLsizeiptr);
 HYBRIS_IMPLEMENT_VOID_FUNCTION1(glesv2, glBindVertexArray, GLuint);
 HYBRIS_IMPLEMENT_VOID_FUNCTION2(glesv2, glDeleteVertexArrays, GLsizei, const GLuint *);
