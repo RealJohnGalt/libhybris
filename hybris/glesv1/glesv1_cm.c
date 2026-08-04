@@ -244,7 +244,6 @@ HYBRIS_IMPLEMENT_VOID_FUNCTION4(glesv1_cm, glFramebufferRenderbufferOES, GLenum,
 HYBRIS_IMPLEMENT_VOID_FUNCTION5(glesv1_cm, glFramebufferTexture2DOES, GLenum, GLenum, GLenum, GLuint, GLint);
 HYBRIS_IMPLEMENT_VOID_FUNCTION4(glesv1_cm, glGetFramebufferAttachmentParameterivOES, GLenum, GLenum, GLenum, GLint *);
 HYBRIS_IMPLEMENT_VOID_FUNCTION1(glesv1_cm, glGenerateMipmapOES, GLenum);
-HYBRIS_IMPLEMENT_FUNCTION2(glesv1_cm, void *, glMapBufferOES, GLenum, GLenum);
 HYBRIS_IMPLEMENT_FUNCTION1(glesv1_cm, GLboolean, glUnmapBufferOES, GLenum);
 HYBRIS_IMPLEMENT_VOID_FUNCTION3(glesv1_cm, glGetBufferPointervOES, GLenum, GLenum, GLvoid **);
 HYBRIS_IMPLEMENT_VOID_FUNCTION1(glesv1_cm, glCurrentPaletteMatrixOES, GLuint);

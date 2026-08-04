@@ -28,6 +28,7 @@
 #include <dlfcn.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <malloc.h>
 #include "ws.h"
@@ -847,6 +848,37 @@ static int compare_search(const void * key, const void * item)
 	return strcmp(key, f_item->name);
 }
 
+/* dlopen() a GLES library, honoring the environment override, and trying the
+ * various sonames that have shipped for it over the years.  The libtool
+ * soname differs between libraries: libGLESv2_libhybris is built with
+ * -version-info 2:0:0 (soname .so.2) while libGLESv1_CM_libhybris is built
+ * with -version-info 1:1:0 (soname .so.0).  Trying the whole list makes the
+ * lookup robust against whatever variant is actually installed. */
+static void *dlopen_gles_lib(const char *env_name, const char *base_name)
+{
+	const char *override = getenv(env_name);
+	char path[128];
+	size_t i;
+
+	if (override != NULL)
+		return dlopen(override, RTLD_LOCAL | RTLD_LAZY);
+
+	const char *suffixes[] = {
+		GL_LIB_SUFFIX ".so.2",
+		GL_LIB_SUFFIX ".so.1",
+		GL_LIB_SUFFIX ".so.0",
+		GL_LIB_SUFFIX ".so",
+	};
+
+	for (i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); i++) {
+		snprintf(path, sizeof(path), "%s%s", base_name, suffixes[i]);
+		void *handle = dlopen(path, RTLD_LOCAL | RTLD_LAZY);
+		if (handle)
+			return handle;
+	}
+	return NULL;
+}
+
 __eglMustCastToProperFunctionPointerType eglGetProcAddress(const char *procname)
 {
 	HYBRIS_DLSYSM(egl, &_eglGetProcAddress, "eglGetProcAddress");
@@ -873,38 +905,31 @@ __eglMustCastToProperFunctionPointerType eglGetProcAddress(const char *procname)
 
 	__eglMustCastToProperFunctionPointerType ret = NULL;
 
-	switch (_egl_context_client_version) {
-		case 1:  // OpenGL ES 1.x API
-			if (_hybris_libgles1 == NULL) {
-				_hybris_libgles1 = (void *) dlopen(
-					getenv("HYBRIS_LIBGLESV1") ?: "libGLESv1_CM" GL_LIB_SUFFIX ".so.1",
-					RTLD_LOCAL | RTLD_LAZY);
-			}
-			ret = _hybris_libgles1 ? dlsym(_hybris_libgles1, procname) : NULL;
-			break;
-		case 2:  // OpenGL ES 2.0 API
-		case 3:  // OpenGL ES 3.x API, backwards compatible with OpenGL ES 2.0 so we implement in same library
-			if (_hybris_libgles2 == NULL) {
-				_hybris_libgles2 = (void *) dlopen(
-					getenv("HYBRIS_LIBGLESV2") ?: "libGLESv2" GL_LIB_SUFFIX ".so.2",
-					RTLD_LOCAL | RTLD_LAZY);
-			}
-			ret = _hybris_libgles2 ? dlsym(_hybris_libgles2, procname) : NULL;
-			break;
-		default:
-			HYBRIS_WARN("Unknown EGL context client version: %d", _egl_context_client_version);
-			break;
-	}
+	/* Resolve the procedure address from every library we ship, regardless of
+	 * the client context version.
+	 *
+	 * The client version is only recorded when a context is created through
+	 * eglCreateContext, and compositors such as gnome-shell/mutter create
+	 * their contexts with EGL_CONTEXT_MAJOR_VERSION (EGL_KHR_create_context)
+	 * rather than EGL_CONTEXT_CLIENT_VERSION, leaving
+	 * _egl_context_client_version at its default of 1.  Gating the lookup on
+	 * that value meant only libGLESv1_CM was consulted and every OpenGL ES
+	 * 2/3-only procedure (glMapBuffer, glMapBufferRange, glUniform*, ...)
+	 * resolved to NULL, making cogl jump to address 0x0 at swap time.
+	 *
+	 * Searching the union of libGLESv2 and libGLESv1_CM makes the lookup
+	 * independent of the recorded client version.  Both libraries wrap the
+	 * same underlying Android driver, so returning a pointer from either is
+	 * always safe. */
+	if (_hybris_libgles2 == NULL)
+		_hybris_libgles2 = dlopen_gles_lib("HYBRIS_LIBGLESV2", "libGLESv2");
+	if (_hybris_libgles1 == NULL)
+		_hybris_libgles1 = dlopen_gles_lib("HYBRIS_LIBGLESV1", "libGLESv1_CM");
 
-	if (ret == NULL)
-	{
-		if (_hybris_libgles2 == NULL) {
-			_hybris_libgles2 = dlopen(
-				getenv("HYBRIS_LIBGLESV2") ?: "libGLESv2" GL_LIB_SUFFIX ".so.2",
-				RTLD_LOCAL | RTLD_LAZY);
-		}
-		ret = _hybris_libgles2 ? dlsym(_hybris_libgles2, procname) : NULL;
-	}
+	if (_hybris_libgles2)
+		ret = dlsym(_hybris_libgles2, procname);
+	if (ret == NULL && _hybris_libgles1)
+		ret = dlsym(_hybris_libgles1, procname);
 
 	if (ret == NULL) {
 		ret = ws_eglGetProcAddress(procname);
@@ -912,6 +937,10 @@ __eglMustCastToProperFunctionPointerType eglGetProcAddress(const char *procname)
 
 	if (ret == NULL && _eglGetProcAddress != NULL) {
 		ret = (*_eglGetProcAddress)(procname);
+	}
+
+	if (ret == NULL && strncmp(procname, "gl", 2) == 0) {
+		HYBRIS_WARN("eglGetProcAddress: could not resolve \"%s\" from libGLESv2, libGLESv1_CM, window system or driver", procname);
 	}
 
 	return ret;

@@ -1,7 +1,7 @@
 lib_LTLIBRARIES = \
 	libGLESv2$(GL_LIB_SUFFIX).la
 
-libGLESv2__GL_LIB_SUFFIX__la_SOURCES = glesv2.c
+libGLESv2__GL_LIB_SUFFIX__la_SOURCES = glesv2.c map_family.c
 libGLESv2__GL_LIB_SUFFIX__la_CFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include $(ANDROID_HEADERS_CFLAGS)
 
 if !WANT_GLVND

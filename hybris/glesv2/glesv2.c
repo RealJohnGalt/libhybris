@@ -225,59 +225,9 @@ HYBRIS_IMPLEMENT_VOID_FUNCTION4(glesv2, glUniformMatrix4x3fv, GLint, GLsizei, GL
 HYBRIS_IMPLEMENT_VOID_FUNCTION10(glesv2, glBlitFramebuffer, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum);
 HYBRIS_IMPLEMENT_VOID_FUNCTION5(glesv2, glRenderbufferStorageMultisample, GLenum, GLsizei, GLenum, GLsizei, GLsizei);
 HYBRIS_IMPLEMENT_VOID_FUNCTION5(glesv2, glFramebufferTextureLayer, GLenum, GLenum, GLuint, GLint, GLint);
-void *glMapBuffer(GLenum target, GLenum access)
-{
-	static void *(*f)(GLenum, GLenum) FP_ATTRIB = NULL;
-	HYBRIS_DLSYSM(glesv2, &f, "glMapBuffer");
-	if (!f)
-		return NULL;
-	return f(target, access);
-}
-
-void *glMapBufferOES(GLenum target, GLenum access)
-{
-	static void *(*f)(GLenum, GLenum) FP_ATTRIB = NULL;
-	HYBRIS_DLSYSM(glesv2, &f, "glMapBufferOES");
-	if (!f)
-		return NULL;
-	return f(target, access);
-}
-
-void *glMapBufferOESEXT(GLenum target, GLenum access)
-{
-	static void *(*f)(GLenum, GLenum) FP_ATTRIB = NULL;
-	HYBRIS_DLSYSM(glesv2, &f, "glMapBufferOESEXT");
-	if (!f)
-		return NULL;
-	return f(target, access);
-}
-
-void *glMapBufferEXT(GLenum target, GLenum access)
-{
-	static void *(*f)(GLenum, GLenum) FP_ATTRIB = NULL;
-	HYBRIS_DLSYSM(glesv2, &f, "glMapBufferEXT");
-	if (!f)
-		return NULL;
-	return f(target, access);
-}
-
-void *glMapBufferRange(GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access)
-{
-	static void *(*f)(GLenum, GLintptr, GLsizeiptr, GLbitfield) FP_ATTRIB = NULL;
-	HYBRIS_DLSYSM(glesv2, &f, "glMapBufferRange");
-	if (!f)
-		return NULL;
-	return f(target, offset, length, access);
-}
-
-void *glMapBufferRangeEXT(GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access)
-{
-	static void *(*f)(GLenum, GLintptr, GLsizeiptr, GLbitfield) FP_ATTRIB = NULL;
-	HYBRIS_DLSYSM(glesv2, &f, "glMapBufferRangeEXT");
-	if (!f)
-		return NULL;
-	return f(target, offset, length, access);
-}
+/* The NULL-safe glMapBuffer/glMapBufferRange family lives in map_family.c,
+ * which is compiled into both libGLESv2_libhybris.so and
+ * libGLESv1_CM_libhybris.so so every dlsym source resolves them. */
 HYBRIS_IMPLEMENT_VOID_FUNCTION3(glesv2, glFlushMappedBufferRange, GLenum, GLintptr, GLsizeiptr);
 HYBRIS_IMPLEMENT_VOID_FUNCTION1(glesv2, glBindVertexArray, GLuint);
 HYBRIS_IMPLEMENT_VOID_FUNCTION2(glesv2, glDeleteVertexArrays, GLsizei, const GLuint *);
