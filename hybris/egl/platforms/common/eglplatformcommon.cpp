@@ -67,6 +67,8 @@ EGLNativeWindowType hybris_egl_get_mapping(EGLSurface surface)
 
 extern "C" EGLBoolean eglplatformcommon_eglBindWaylandDisplayWL(EGLDisplay dpy, struct wl_display *display)
 {
+	if (!display)
+		return EGL_FALSE;
 	server_wlegl_create(display);
 	return EGL_TRUE;
 }
@@ -79,6 +81,9 @@ extern "C" EGLBoolean eglplatformcommon_eglUnbindWaylandDisplayWL(EGLDisplay dpy
 extern "C" EGLBoolean eglplatformcommon_eglQueryWaylandBufferWL(EGLDisplay dpy,
 	struct wl_resource *buffer, EGLint attribute, EGLint *value)
 {
+	if (!value)
+		return EGL_FALSE;
+
 	server_wlegl_buffer *buf  = server_wlegl_buffer_from(buffer);
 	if (!buf || !buf->buf)
 		return EGL_FALSE;

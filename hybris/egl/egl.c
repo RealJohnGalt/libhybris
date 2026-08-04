@@ -871,9 +871,6 @@ __eglMustCastToProperFunctionPointerType eglGetProcAddress(const char *procname)
 	if (loaded_ws == EGL_PLATFORM_GBM_KHR && lindroid_drm_mutter_quirks)
 	{
 		static const char *hidden_procs[] = {
-			"eglBindWaylandDisplayWL",
-			"eglUnbindWaylandDisplayWL",
-			"eglQueryWaylandBufferWL",
 			"glMapBuffer",
 			"glMapBufferOES",
 			"glMapBufferOESEXT",

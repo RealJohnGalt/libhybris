@@ -588,7 +588,7 @@ extern "C" const char *lindroid_drmws_eglQueryString(EGLDisplay dpy, EGLint name
 			" EGL_EXT_device_drm_render_node",
 			ret
 		);
-		ret = lindroid_drm_mutter_quirks ? filter_extensions(eglextensionsbuf) : eglextensionsbuf;
+		ret = filter_extensions(eglextensionsbuf);
 	}
 	return ret;
 }
